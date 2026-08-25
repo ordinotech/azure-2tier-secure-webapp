@@ -1,5 +1,7 @@
 # Déployer une architecture Web 2-Tier ultra-sécurisée sur Azure (Apache & MariaDB)
 
+![Image 01](images/Presentation-azure-2tier-secure-webapp.png)
+
 N'importe qui peut mettre un site en ligne en une heure. Le faire correctement, avec une base de données qui ne traîne pas à portée de n'importe quel bot qui scanne Internet, c'est une autre histoire. Ce projet documente le déploiement d'une architecture 2-tier sur Azure : un serveur web accessible depuis l'extérieur, un serveur de base de données qui, lui, ne parle qu'à une seule machine sur toute la planète.
 
 ## Ce que le projet couvre
@@ -56,6 +58,22 @@ Pourquoi un VNet plutôt que de laisser les deux serveurs se parler par Internet
 
 `WebServer` reçoit une IP privée `10.0.0.4` et une IP publique. `DataServer` reste sur `10.0.0.5`, sans IP publique du tout.
 
+Propriétés du réseau virtuel `vnet-1` (10.0.0.0/16)
+
+![Image 02](images/img1.png)
+
+Vue d'ensemble de la VM WebServer, avec son IP privée 10.0.0.4 et son IP publique
+
+![Image 03](images/img2.png)
+
+Vue d'ensemble de la VM DataServer, avec son IP privée 10.0.0.5
+
+![Image 04](images/img3.png)
+
+Test de connexion réussi entre les deux machines du VNet
+
+![Image 05](images/img4.png)
+
 ## Étape 2 : le serveur web
 
 Connexion SSH au `WebServer`, installation d'Apache et de PHP, puis rattachement du nom de domaine à l'IP publique via la zone DNS.
@@ -65,7 +83,35 @@ sudo apt install apache2
 sudo apt install libapache2-mod-php8.3
 ```
 
-Un VirtualHost configuré dans `/etc/apache2/sites-available/mondomaine.xyz.conf` indique à Apache quel dossier charger quand quelqu'un tape le nom de domaine dans son navigateur. Rien de sorcier, mais c'est la base de tout hébergement web un minimum sérieux.
+Un VirtualHost configuré dans `/etc/apache2/sites-available/ordigi.xyz.conf` indique à Apache quel dossier charger quand quelqu'un tape le nom de domaine dans son navigateur. Rien de sorcier, mais c'est la base de tout hébergement web un minimum sérieux.
+
+Installation d'Apache, première partie de la commande
+
+![Image 06](images/img5.png)
+
+Installation d'Apache, suite de la commande
+
+![Image 07](images/img6.png)
+
+Interface de gestion DNS montrant le pointage (enregistrement A) vers l'IP publique
+
+![Image 08](images/img7.png)
+
+Fichier de configuration du VirtualHost `/etc/apache2/sites-available/ordigi.xyz.conf`
+
+![Image 09](images/img8.png)
+
+Activation du site avec la commande dédiée
+
+![Image 10](images/img9.png)
+
+Installation de PHP (`libapache2-mod-php8.3`)
+
+![Image 11](images/img10.png)
+
+Page "PHP Info" affichée dans le navigateur, encore en HTTP à ce stade
+
+![Image 12](images/img11.png)
 
 ## Étape 3 : HTTPS et pare-feux
 
@@ -79,6 +125,26 @@ sudo ufw status
 # 443/tcp  ALLOW
 ```
 
+Terminal confirmant le succès de Certbot
+
+![Image 13](images/img12.png)
+
+Exécution de la commande Certbot
+
+![Image 14](images/img13.png)
+
+NSG Azure (`WebServer-nsg`) montrant le port 443 autorisé et le 80 bloqué ou redirigé
+
+![Image 15](images/img14.png)
+
+Terminal avec `sudo ufw status`, ports 22 et 443 en ALLOW
+
+![Image 16](images/img16.png)
+
+Le site accessible désormais en HTTPS
+
+![Image 17](images/img18.png)
+
 ## Étape 4 : le serveur de base de données
 
 MariaDB s'installe sur le `DataServer`, une machine à part entière, physiquement et logiquement distincte du serveur web.
@@ -90,6 +156,22 @@ sudo systemctl status mariadb
 ```
 
 Même si le site web venait à être compromis, les données brutes resteraient hors d'atteinte, sur un serveur que l'attaquant ne voit même pas depuis Internet.
+
+Connexion SSH au serveur de données et début du téléchargement de MariaDB
+
+![Image 18](images/img17.png)
+
+Suite de l'installation de MariaDB
+
+![Image 19](images/img18.png)
+
+Fenêtre apparue pendant l'installation, répondre "NO" à cette étape
+
+![Image 20](images/img19.png)
+
+Statut `active (running)` du service MariaDB confirmé
+
+![Image 21](images/img20.png)
 
 ## Étape 5 : verrouiller les communications
 
@@ -103,15 +185,37 @@ sudo ufw enable
 
 Une base de données n'a strictement aucune raison d'écouter l'ensemble d'Internet. Cette règle crée un tunnel de confiance exclusif entre les deux machines, et rejette tout le reste, sans exception.
 
-Test de connexion réussi depuis le serveur web :
-
 ```bash
 mysql -h 10.0.0.5 -u webuser -p
 ```
 
+NSG Azure (`DataServer-nsg`) montrant la source `10.0.0.4` autorisée pour MariaDB
+
+![Image 22](images/img21.png)
+
+`ufw status verbose` avec `ALLOW IN` limité à `10.0.0.4`
+
+![Image 23](images/img22.png)
+
+Suite du statut UFW détaillé sur le DataServer
+
+![Image 24](images/img23.png)
+
+Connexion MySQL réussie depuis le serveur web vers le serveur de données
+
+![Image 25](images/img24.png)
+
+Résultat final après création de la base, de la table et des entrées SQL
+
+![Image 26](images/img25.png)
+
 ## Étape 6 : la preuve par l'exemple
 
 Une page PHP déployée sur le `WebServer` exécute une requête `SELECT * FROM` vers la base distante et affiche une liste de clients enregistrés. Le navigateur demande la page en HTTPS, le `WebServer` interroge le `DataServer` via son IP privée, le pare-feu du serveur de données reconnaît l'IP autorisée et laisse passer, les données remontent et s'affichent. Toute la chaîne fonctionne.
+
+Site `https://www.ordigi.xyz` affichant la liste des clients enregistrés
+
+![Image 27](images/img26.png)
 
 ## Pour aller plus loin
 
